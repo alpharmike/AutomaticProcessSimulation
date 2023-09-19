@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import statistics
 from pm4py.objects.log.importer.xes import importer as xes_import_factory
-#from pm4py.objects.log.adapters.pandas import csv_import_adapter
+# from pm4py.objects.log.adapters.pandas import csv_import_adapter
 from pm4py.objects.log.util import dataframe_utils
 from pm4py.objects.conversion.log import converter as conversion_factory
 import math
@@ -13,7 +13,6 @@ import warnings
 from pm4py.util import xes_constants
 from pm4py.util import constants
 import pandas as pd
-
 
 import scipy
 import scipy.stats
@@ -35,7 +34,7 @@ def read_input_file_path():
         --------------
         file.file_path
                 The file path of the input event log file
-    """ 
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("file_path", type=Path)
     file = parser.parse_args()
@@ -77,16 +76,16 @@ def import_csv(file_path):
             csv_log
                 The input event logs in the form of a log
             """
-    #data_frame = csv_import_adapter.import_dataframe_from_path(
-    data_frame=pd.read_csv(
-        os.path.join(file_path), sep=";")
+    # data_frame = csv_import_adapter.import_dataframe_from_path(
+    data_frame = pd.read_csv(
+        os.path.join(file_path), sep=",")
     data_frame["time:timestamp"] = data_frame["time:timestamp"].apply(lambda x:
-                                                                      datetime.strptime(x, '%d-%m-%Y:%H.%M'))
+                                                                      datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
     if 'time:complete' in data_frame.columns:
-        data_frame["time:complete"] = pd.to_datetime(data_frame["time:complete"], format='%d-%m-%Y:%H.%M')
+        data_frame["time:complete"] = pd.to_datetime(data_frame["time:complete"], format='%Y-%m-%d %H:%M:%S')
     data_frame["Activity"] = data_frame["concept:name"]
-    parameters = {constants.PARAMETER_CONSTANT_CASEID_KEY: "concept:name",
-                  constants.PARAMETER_CONSTANT_ACTIVITY_KEY: "activity",
+    parameters = {constants.PARAMETER_CONSTANT_CASEID_KEY: "case:concept:name",
+                  constants.PARAMETER_CONSTANT_ACTIVITY_KEY: "concept:name",
                   constants.PARAMETER_CONSTANT_TIMESTAMP_KEY: "time:timestamp"}
     csv_log = conversion_factory.apply(data_frame, parameters=parameters)
     print("Import of csv successful,with {0} traces in total".format(len(csv_log)))
@@ -103,8 +102,8 @@ def verify_extension_and_import():
                 The input event logs in the form of a log
             """
 
-    #file_path ="Prozessmodel.xes"
-    read_input_file_path()
+    # file_path ="Prozessmodel.xes"
+    file_path = read_input_file_path()
     file_name, file_extension = os.path.splitext(file_path)
     file_extension = file_extension.replace("'))", "")
     print("File Extension: ", file_extension)
@@ -118,33 +117,34 @@ def verify_extension_and_import():
         print("Unsupported extension. Supported file extensions are .xes and .csv ONLY")
         exit()
 
+
 def remove_outliers(dataset, attribute):
-    
     Q1 = dataset[attribute].quantile(0.25)
     Q3 = dataset[attribute].quantile(0.75)
     IQR = Q3 - Q1
-    
-    UpperWhisker = Q3 + 1.5 *IQR
-    LowerWhisker = Q1 - 1.5 *IQR
-    
+
+    UpperWhisker = Q3 + 1.5 * IQR
+    LowerWhisker = Q1 - 1.5 * IQR
+
     filter = (dataset[attribute] > LowerWhisker) | (dataset[attribute] < UpperWhisker)
-    
-    result = dataset.loc[filter]   
+
+    result = dataset.loc[filter]
 
     return result
-    
+
+
 class Distribution(object):
-    def __init__(self, dist_name_list = []):
-        self.dist_names = ['norm','lognorm','expon']
+    def __init__(self, dist_name_list=[]):
+        self.dist_names = ['norm', 'lognorm', 'expon']
         self.dist_results = []
         self.params = {}
-        
+
         self.DistributionName = ""
         self.PValue = 0
         self.Param = None
-        
+
         self.isFitted = False
-    
+
     def Fit(self, y):
         self.dist_results = []
         self.params = {}
@@ -152,21 +152,22 @@ class Distribution(object):
             dist = getattr(scipy.stats, dist_name)
             param = dist.fit(y)
             self.params[dist_name] = param
-            #Applying the Kolmogorov-Smirnov test
+            # Applying the Kolmogorov-Smirnov test
             D, p = scipy.stats.kstest(y, dist_name, args=param);
-            self.dist_results.append((dist_name,p))
-        #select the best fitted distribution
-        sel_dist,p = (max(self.dist_results,key=lambda item:item[1]))
-        #store the name of the best fit and its p value
+
+            self.dist_results.append((dist_name, p))
+        # select the best fitted distribution
+        sel_dist, p = (max(self.dist_results, key=lambda item: item[1]))
+        # store the name of the best fit and its p value
         self.DistributionName = sel_dist
         self.PValue = p
-        
+
         self.isFitted = True
-        #print("Best fitted distribution and the p value are:", self.DistributionName,self.PValue)
-       
-        return self.DistributionName,self.PValue
-    
-    
+        # print("Best fitted distribution and the p value are:", self.DistributionName,self.PValue)
+
+        return self.DistributionName, self.PValue
+
+
 def create_methods():
     """
                 This function calculates the average time taken for each activity and writes methods to method.py file
@@ -206,29 +207,26 @@ def create_methods():
                     timetaken[attribute] = [mean]
                 else:
                     timetaken[attribute].append(mean)
-    
-
 
     dfn = pd.DataFrame.from_dict(timetaken, orient='index')
     dfr = dfn.transpose()
     dfr.dropna(inplace=True)
-          
-    
-    #for col in dfr.columns:
-        #cleaned = remove_outliers(dfr, col)
 
-    #cleaned.dropna(inplace = True)
+    # for col in dfr.columns:
+    # cleaned = remove_outliers(dfr, col)
+
+    # cleaned.dropna(inplace = True)
     new_timetaken = dfr.to_dict('list')
-    #print(new_timetaken)
+    # print(new_timetaken)
     distribution = {}
     for attribute in new_timetaken:
         try:
             dst = Distribution()
-            distribution[attribute]=dst.Fit(new_timetaken[attribute])
+            distribution[attribute] = dst.Fit(new_timetaken[attribute])
         except:
-            distribution ='few data for distribution fitting'
+            distribution = 'few data for distribution fitting'
         new_timetaken[attribute] = random.choice(new_timetaken[attribute])
-    
+
     user_req = "y"
     user_input = input("Do you want to modify the average time for any activity? Enter y to modify or press any key to "
                        "continue ")
@@ -257,19 +255,22 @@ def create_methods():
     print(attributes)
 
     f = open("methods.py", "w")
-    f.write('''\
+
+    methods_file_content = '''\
 class Trace(object):
     def __init__(self,env):
-        self.env = env       
-    ''')
+        self.env = env
+'''
+
+    f.write(methods_file_content)
     for attribute in attributes:
-        f.write('''\
-def %s(self):
-        \tyield self.env.timeout(%d)       
-    ''' % (str(attribute).replace(" ", ""), attributes[attribute]))
+        content = f'''\
+    def {str(attribute).replace(" ", "")}(self):
+        yield self.env.timeout({attributes[attribute]}) 
+'''
+        f.write(content)
     f.close()
 
 
 if __name__ == '__main__':
     create_methods()
-

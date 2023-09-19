@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+
+import pm4py
+
 import simulation_activity
 from pm4py.algo.discovery.inductive import algorithm as inductive_miner
 import warnings
@@ -9,12 +12,12 @@ from random import shuffle
 from pm4py.util import constants
 import random
 import simpy
-import pm4py.objects.log.log as log_instance
-from pm4py.objects.petri import semantics
+import pm4py.objects.log.obj as log_instance
+from pm4py.objects.petri_net import semantics
 from pm4py.util import xes_constants
 import sys, importlib
 import methods
-from pm4py.statistics.traces.log.case_arrival import get_case_arrival_avg
+from pm4py.statistics.traces.generic.log.case_arrival import get_case_arrival_avg
 from pm4py.util.business_hours import BusinessHours
 
 importlib.reload(sys.modules['methods'])
@@ -45,7 +48,7 @@ def discover_process_model():
                    constants.PARAMETER_CONSTANT_ACTIVITY_KEY: "concept:name",
                    constants.PARAMETER_CONSTANT_TIMESTAMP_KEY: "time:timestamp"}
     print("Beginning Petri net mining. Please wait...")
-    net, initial_marking, final_marking = inductive_miner.apply(log, parameters=parameters1)
+    net, initial_marking, final_marking = pm4py.discover_petri_net_inductive(log)
     print("Petri Net creation successful")
     relevant_info_generator(net, initial_marking, final_marking, log)
     return net, initial_marking, final_marking
@@ -66,7 +69,7 @@ def relevant_info_generator(net, initial_marking, final_marking, log):
                     The input events in the form of a log
 
                 """
-       
+
     simulation_of_events(log, net, initial_marking)
 
 
@@ -83,7 +86,7 @@ def simulation_of_events(log, net, initial_marking):
     random.seed(41)  # This helps reproducing the results
 
     # Create an environment and start the setup process
-    env = simpy.Environment()    
+    env = simpy.Environment()
 
     print("Please enter no of cases to be generated")
     no_traces = int(input())
@@ -110,11 +113,10 @@ def setup(log, env, no_traces, net, initial_marking):
     else:
         case_arrival_time = get_case_arrival_avg(log)
 
-
     casegen = methods.Trace(env)
 
     # Create more cases while the simulation is running
-    for i in range(1, no_traces+1):        
+    for i in range(1, no_traces + 1):
         yield env.timeout(case_arrival_time)
         env.process(simulation(env, 'Case %d' % i, casegen, net, initial_marking, no_traces))
 
@@ -131,9 +133,9 @@ def simulation(env, case_num, case, net, initial_marking, no_traces):
     max_trace_length = 1000  # Only traces with length lesser than 1000 are created
     f = open('simulated-logs.csv', 'w', newline='')
     thewriter = csv.writer(f)
-    thewriter.writerow(['case_id', 'activity', 'time:timestamp'])
+    thewriter.writerow(['case:concept:name', 'concept:name', 'time:timestamp'])
     curr_timestamp = datetime.now()
-    log = log_instance.EventLog()    
+    log = log_instance.EventLog()
     trace = log_instance.Trace()
     trace.attributes[case_id_key] = str(case_num.replace('Case', ''))
     marking = copy(initial_marking)
@@ -147,7 +149,7 @@ def simulation(env, case_num, case, net, initial_marking, no_traces):
         if trans.label is not None:
             event = log_instance.Event()
             event[activity_key] = trans.label
-            results.append([case_num, event[activity_key], datetime.now() + timedelta(seconds=env.now)])
+            results.append([case_num, event[activity_key], (datetime.now() + timedelta(seconds=env.now)).strftime("%Y-%m-%d %H:%M:%S")])
             yield env.process(getattr(case, str(trans.label).replace(" ", ""))())
             event[timestamp_key] = curr_timestamp
             trace.append(event)
@@ -157,7 +159,8 @@ def simulation(env, case_num, case, net, initial_marking, no_traces):
     if len(trace) > 0:
         log.append(trace)
 
-        results.append([case_num, "case end", datetime.now() + timedelta(seconds=env.now)])
+        results.append(
+            [case_num, "case end", (datetime.now() + timedelta(seconds=env.now)).strftime("%Y-%m-%d %H:%M:%S")])
 
     for row in results:
         thewriter.writerow(row)
